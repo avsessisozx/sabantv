@@ -1,0 +1,22 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=youtube.com&sz=%size%",
+        "fileHash": "sha256-17f026e2d74a3b073bab7a3a06ea91aefcc9f4c05beef4d1b5f1cc6446c48ff1",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/avsessisozx/sabantv",
+        "fileSize": 11671,
+        "status": 1,
+        "language": "tr",
+        "authors": [
+            "avsessisozx"
+        ],
+        "tvTypes": [
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "AvsarFilm",
+        "description": "Av\u015far Film'in resmi YouTube kanal\u0131ndaki i\u00e7erikler",
+        "url": "https://raw.githubusercontent.com/avsessisozx/sabantv/builds/AvsarFilm.cs3",
+        "name": "AvsarFilm"
+    }
+]
