@@ -29,6 +29,15 @@ serbest lisanslı arşivler. Yeni kaynağı eklemeden önce resmi olup olmadığ
 - `.github/workflows/build.yml` : GitHub Actions; `master`'a push olunca derler, çıktıyı `builds` dalına yazar.
 - `builds` dalı : **otomatik üretilir, elle düzenleme.** İçinde `.cs3`, `plugins.json` ve `build.log` olur.
 
+## Link yapıştırarak yeni site ekleme (otomatik)
+
+`.github/workflows/kaynak-ekle.yml` ("Yeni Kaynak Ekle"): GitHub'da Actions → Yeni Kaynak Ekle → Run workflow → link yapıştır.
+Claude (claude-code-action) önce yasallık kontrolü yapar, uygunsa `AvsarFilm/` yapısını örnek alıp siteye özel modül yazar,
+`./gradlew <Modul>:make` ile derler ve sonucu `KAYNAK_SONUCU.md` dosyasına yazar. Sonraki adım dalı (`kaynak-<run_id>`) yükleyip PR açar.
+Kullanıcı PR'ı birleştirince `Build` akışı eklentiyi yayınlar.
+- Gerekli: depo secret'ı `ANTHROPIC_API_KEY` ve depo ayarında "Allow GitHub Actions to create and approve pull requests".
+- PR'lar GITHUB_TOKEN ile açıldığı için PR üzerinde derleme akışı tetiklenmez; derleme sonucu PR açıklamasında yazar.
+
 ## Yeni bir resmi YouTube kanalı nasıl eklenir?
 
 1. Kullanıcıdan kanalın bağlantısını al (`youtube.com/@isim` veya `/channel/UC...`).

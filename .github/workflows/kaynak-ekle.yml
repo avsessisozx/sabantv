@@ -1,0 +1,138 @@
+name: Yeni Kaynak Ekle
+
+# Kullanım: GitHub'da Actions -> "Yeni Kaynak Ekle" -> "Run workflow" -> sitenin linkini yapıştır -> Run.
+# Claude siteyi inceler, o siteye özel bir eklenti yazar, derlemeyi dener ve bir Pull Request açar.
+# PR'ı onaylayıp birleştirince (Merge) normal "Build" akışı eklentiyi yayınlar.
+# Gerekli: depo ayarlarında ANTHROPIC_API_KEY adlı bir "secret".
+
+on:
+  workflow_dispatch:
+    inputs:
+      link:
+        description: "Sitenin linki (ör. https://www.trtarsiv.com)"
+        required: true
+        type: string
+      not:
+        description: "İsteğe bağlı not (ör. hangi bölüm/kategori, eklentinin adı)"
+        required: false
+        type: string
+
+concurrency:
+  group: "kaynak-ekle"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  kaynak-ekle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Linki kontrol et
+        env:
+          LINK: ${{ inputs.link }}
+        run: |
+          if ! printf '%s' "$LINK" | grep -Eq '^https?://[A-Za-z0-9.-]+(/[^[:space:]]*)?$'; then
+            echo "::error::Geçersiz link: http:// veya https:// ile başlayan tek bir adres girin."
+            exit 1
+          fi
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK lisansları
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
+      - name: Claude eklentiyi yazsın
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: "--max-turns 80 --allowedTools 'Edit,MultiEdit,Write,Read,Glob,Grep,LS,WebFetch,Bash(curl:*),Bash(./gradlew:*),Bash(chmod:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(find:*)'"
+          prompt: |
+            Bu depo, CloudStream (Android medya oynatıcı) için Türkçe bir eklenti deposudur.
+            Önce DEVIR.md dosyasını oku; oradaki kurallar geçerlidir.
+
+            GÖREV: Aşağıdaki site için yeni bir CloudStream eklentisi (ayrı bir Gradle modülü) yaz.
+            Site linki: ${{ inputs.link }}
+            Kullanıcının notu: ${{ inputs.not }}
+
+            1. YASALLIK KONTROLÜ (zorunlu, ilk iş):
+               Siteyi incele. Eklenti yalnızca içeriği yayınlama hakkı olan resmi/yasal kaynaklar için yazılır:
+               içerik sahibinin kendi sitesi, TRT gibi kamu yayıncıları, serbest lisanslı (ör. kamu malı, Creative Commons) arşivler.
+               Lisanssız film/dizi siteleri, korsan içerik veya başkasının içeriğini izinsiz yayınlayan siteler için KOD YAZMA.
+               Kaynak uygun değilse ya da emin olamıyorsan: depo kökünde KAYNAK_SONUCU.md dosyasına nedenini Türkçe ve
+               sade bir dille yaz ve başka hiçbir dosyayı değiştirmeden dur.
+
+            2. EKLENTİYİ YAZ:
+               - AvsarFilm/ klasörünü yapı örneği olarak al (build.gradle.kts, AndroidManifest.xml, Plugin sınıfı, MainAPI sınıfı).
+               - Yeni klasör adı ve sınıf adı sitenin adından PascalCase olsun (ör. TrtArsiv). Paket: com.example.
+               - mainUrl, name, lang = "tr", uygun supportedTypes, build.gradle.kts içinde version = 1, açıklama ve iconUrl.
+               - Sitenin HTML'ini/API'sini curl ile gerçekten indirip incele; seçicileri tahminle değil gerçek veriye göre yaz.
+               - Ana sayfa kategorileri (mainPage), getMainPage, search, load ve loadLinks fonksiyonlarını yaz.
+               - loadLinks: sayfadaki video kaynağını bul (doğrudan mp4/m3u8 ise ExtractorLink ile ver,
+                 YouTube veya bilinen bir oynatıcı iframe'i ise loadExtractor kullan).
+               - Mevcut AvsarFilm modülüne ve diğer dosyalara dokunma.
+
+            3. DERLE:
+               chmod +x gradlew && ./gradlew <ModulAdi>:make
+               Hata varsa düzelt ve tekrar derle; başarılı olana kadar devam et.
+
+            4. SONUÇ:
+               Depo kökünde KAYNAK_SONUCU.md dosyasına Türkçe ve sade bir dille yaz:
+               eklentinin adı, ne yaptığı, hangi kısımların gerçek veriyle doğrulandığı, nelerin doğrulanamadığı
+               (ör. videonun oynayıp oynamadığı telefonda denenmeli), derlemenin sonucu.
+
+            git commit, git push veya PR açma YAPMA; bunları sonraki adım yapar.
+
+      - name: Sonucu derle ve doğrula
+        id: derle
+        run: |
+          set +e
+          chmod +x gradlew
+          ./gradlew make > derleme.log 2>&1
+          if [ $? -eq 0 ]; then echo "durum=başarılı" >> "$GITHUB_OUTPUT"; else echo "durum=HATALI" >> "$GITHUB_OUTPUT"; fi
+          tail -n 40 derleme.log
+
+      - name: Pull Request aç
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINK: ${{ inputs.link }}
+          DURUM: ${{ steps.derle.outputs.durum }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          rm -f derleme.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="kaynak-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::warning::Claude hiçbir dosya oluşturmadı. Ayrıntılar için çalıştırma kaydına bakın."
+            exit 0
+          fi
+          git commit -m "Yeni kaynak: $LINK"
+          git push origin "$BRANCH"
+          {
+            echo "Link: $LINK"
+            echo
+            echo "Derleme: **$DURUM**"
+            echo
+            echo "Çalıştırma kaydı: $RUN_URL"
+            echo
+            echo "---"
+            cat KAYNAK_SONUCU.md 2>/dev/null || echo "(KAYNAK_SONUCU.md yazılmadı)"
+          } > pr.md
+          gh pr create --base master --head "$BRANCH" --title "Yeni kaynak: $LINK" --body-file pr.md
